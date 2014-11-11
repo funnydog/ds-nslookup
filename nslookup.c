@@ -4,7 +4,10 @@
 #include <stdio.h>
 #include <poll.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <string.h>
+
+static const int POLL_TIMEOUT = 5000;
 
 static const char *reverse(struct sockaddr *sa, socklen_t len)
 {
@@ -16,6 +19,7 @@ static const char *reverse(struct sockaddr *sa, socklen_t len)
 
 	return name;
 }
+
 static void *get_in_addr(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET)
@@ -32,24 +36,8 @@ static void print_address(int count, struct sockaddr *sa, socklen_t len)
 	       reverse(sa, len));
 }
 
-static void print_server(struct sockaddr *sa, socklen_t len)
+static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *slen)
 {
-	printf("%-10s %s\n", "Server:", reverse(sa, len));
-	print_address(1, sa, len);
-	fputc('\n', stdout);
-}
-
-static int res_squery(const char *server, const char *dname, int class, int type,
-		      unsigned char *answer, int anslen)
-{
-	/* build the query */
-	unsigned char q[280];
-	int ql = res_mkquery(0, dname, ns_t_a, ns_c_any, 0, 0, 0, q, sizeof(q));
-	if (ql < 0) {
-		fprintf(stderr, "cannot make the query\n");
-		goto err;
-	}
-
 	/* translate the server name to an address */
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
@@ -61,31 +49,49 @@ static int res_squery(const char *server, const char *dname, int class, int type
 	int rv = getaddrinfo(server, "53", &hints, &res);
 	if ( rv != 0 || res == NULL) {
 		fprintf(stderr, "cannot resolve %s:%s\n", server, "53");
-		fprintf(stderr, "%s\n", gai_strerror(rv));
+		return -1;
+	}
+
+	/* save the values into the structure */
+	*slen = res->ai_addrlen;
+	memmove(sa, res->ai_addr, res->ai_addrlen);
+
+	/* print the server name */
+	printf("%-10s %s\n", "Server:", reverse(sa, *slen));
+
+	/* walk the address list and print the addresses */
+	struct addrinfo *p;
+	int cnt = 0;
+	for (p = res; p != NULL; p = p->ai_next)
+		print_address(++cnt, p->ai_addr, p->ai_addrlen);
+
+	fputc('\n', stdout);
+
+	/* free the data and exit */
+	freeaddrinfo(res);
+	return 0;
+}
+
+static int res_ssend(struct sockaddr *sa, socklen_t slen, const unsigned char *msg, int msglen,
+		      unsigned char *answer, int anslen)
+{
+	struct sockaddr_storage src = {
+		.ss_family = sa->sa_family,
+	};
+
+	int fd = socket(src.ss_family, SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, 0);
+	if (fd < 0) {
+		fprintf(stderr, "cannot create the socket\n");
 		goto err;
 	}
 
-	/* print sockaddr */
-	print_server(res->ai_addr, res->ai_addrlen);
-
-	/* TODO: store the proper family agnostic sockaddr */
-	struct sockaddr_in src = {
-		.sin_family = AF_INET,
-	};
-
-	int fd = socket(res->ai_family, res->ai_socktype|SOCK_CLOEXEC|SOCK_NONBLOCK, res->ai_protocol);
-	if (fd < 0) {
-		fprintf(stderr, "cannot create the socket\n");
-		goto err_freeaddrinfo;
-	}
-
-	if (bind(fd, (void *)&src, sizeof(src)) < 0) {
+	if (bind(fd, (void *)&src, slen) < 0) {
 		fprintf(stderr, "bind failure\n");
 		goto err_close;
 	}
 
 	/* send the query */
-	if (sendto(fd, q, ql, MSG_NOSIGNAL, res->ai_addr, res->ai_addrlen) < 0) {
+	if (sendto(fd, msg, msglen, MSG_NOSIGNAL, sa, slen) < 0) {
 		fprintf(stderr, "sendto failure\n");
 		goto err_close;
 	}
@@ -94,28 +100,24 @@ static int res_squery(const char *server, const char *dname, int class, int type
 	struct pollfd pfd;
 	pfd.fd = fd;
 	pfd.events = POLLIN;
-	if (poll(&pfd, 1, 5000) <= 0) {
+	if (poll(&pfd, 1, POLL_TIMEOUT) <= 0) {
 		fprintf(stderr, "poll timeout\n");
 		goto err_close;
 	}
 
 	/* receive the data */
-	socklen_t len = sizeof(src);
 	size_t alen = anslen;
-	ssize_t rlen = recvfrom(fd, answer, alen, 0, (void*)&src, &len);
+	ssize_t rlen = recvfrom(fd, answer, alen, 0, (void*)&src, &slen);
 	if (rlen < 0) {
 		fprintf(stderr, "recvfrom error\n");
 		goto err_close;
 	}
 
-	freeaddrinfo(res);
 	close(fd);
 	return rlen;
 
 err_close:
 	close(fd);
-err_freeaddrinfo:
-	freeaddrinfo(res);
 err:
 	return -1;
 }
@@ -192,7 +194,7 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 	case 1:			/* A */
 		if (len >= 4) {
 			u.v4.sin_family = AF_INET;
-			u.v4.sin_addr.s_addr = ((bytes[0]*256U + bytes[1])*256U + bytes[2])*256U + bytes[3];
+			u.v4.sin_addr.s_addr = *(long *)data;
 			slen = sizeof(struct sockaddr_in);
 		}
 		break;
@@ -218,32 +220,48 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 
 int main(int argc, char *argv[])
 {
-	unsigned char answer[1024];
-
-	int len;
-	if (argc == 2) {
-		len = res_query(argv[1], 1, 1, answer, sizeof(answer));
-
-		/* default to localhost */
-		struct sockaddr_in sa = {
-			.sin_family = AF_INET,
-			.sin_port = 0x3500,
-			.sin_addr.s_addr = 0x7f000001,
-		};
-		print_server((void *)&sa, sizeof(struct sockaddr_in));
-	} else if (argc == 3) {
-		len = res_squery(argv[2], argv[1], 1, 1, answer, sizeof(answer));
-	} else {
-		return -1;
+	/* check the args */
+	if (argc < 2 || argc > 3) {
+		fprintf(stderr, "Usage: %s [HOST] [SERVER]\n", argv[0]);
+		return EXIT_FAILURE;
 	}
 
+	/* build the query */
+	unsigned char q[280];
+	int ql = res_mkquery(0, argv[1], ns_t_a, ns_c_any, 0, 0, 0, q, sizeof(q));
+	if (ql < 0) {
+		fprintf(stderr, "cannot build the query\n");
+		return EXIT_FAILURE;
+	}
+
+	/* send the query to the server */
+	struct sockaddr_storage srv;
+	socklen_t srvlen;
+	unsigned char answer[1024];
+	int len;
+
+	if (argc == 2) {
+		resolve_server("127.0.0.1", (void *)&srv, &srvlen);
+		len = res_send(q, ql, answer, sizeof(answer));
+	} else if (argc == 3) {
+		resolve_server(argv[2], (void *)&srv, &srvlen);
+		len = res_ssend((void *)&srv, srvlen, q, ql, answer, sizeof(answer));
+	} else {
+		abort();
+	}
+
+	if (len < 0) {
+		fprintf(stderr, "cannot send the query\n");
+		return EXIT_FAILURE;
+	}
+
+	/* decode the answer */
 	struct context ctx = {0};
 	printf("%-10s %s\n", "Name:", argv[1]);
-
 	if (dns_parse(answer, len, dns_callback, &ctx) < 0) {
-		fprintf(stderr, "parse failure\n");
-		return -1;
+		fprintf(stderr, "decode failure\n");
+		return EXIT_FAILURE;
 	}
 
-	return 0;
+	return EXIT_SUCCESS;
 }
