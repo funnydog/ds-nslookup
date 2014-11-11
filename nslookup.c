@@ -24,10 +24,10 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-static void print_address(struct sockaddr *sa, socklen_t len)
+static void print_address(int count, struct sockaddr *sa, socklen_t len)
 {
 	char str[INET6_ADDRSTRLEN];
-	printf("%-10s %s %s\n", "Address:",
+	printf("Address %u: %s %s\n", count,
 	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)),
 	       reverse(sa, len));
 }
@@ -35,7 +35,7 @@ static void print_address(struct sockaddr *sa, socklen_t len)
 static void print_server(struct sockaddr *sa, socklen_t len)
 {
 	printf("%-10s %s\n", "Server:", reverse(sa, len));
-	print_address(sa, len);
+	print_address(1, sa, len);
 	fputc('\n', stdout);
 }
 
@@ -120,6 +120,11 @@ err:
 	return -1;
 }
 
+struct context
+{
+	int cnt;
+};
+
 /* copied straight from MUSL libc */
 static int dns_parse(const unsigned char *r, int rlen,
 		int (*callback)(void *, int, const void *, int, const void *),
@@ -174,6 +179,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 
 static int dns_callback(void *c, int rr, const void *data, int len, const void *packet)
 {
+	struct context *ctx = c;
 	const uint8_t *bytes = data;
 	union {
 		struct sockaddr sa;
@@ -206,7 +212,7 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 		return -1;
 	}
 
-	print_address(&u.sa, slen);
+	print_address(++ctx->cnt, &u.sa, slen);
 	return 0;
 }
 
@@ -217,15 +223,24 @@ int main(int argc, char *argv[])
 	int len;
 	if (argc == 2) {
 		len = res_query(argv[1], 1, 1, answer, sizeof(answer));
-		print_server((struct sockaddr *)_res._u._ext.nsaddrs[0],
-			     sizeof(struct sockaddr_in6));
-	} else if (argc == 3)
-		len = res_squery(argv[2], argv[1], 1, 1, answer, sizeof(answer));
-	else
-		return -1;
 
+		/* default to localhost */
+		struct sockaddr_in sa = {
+			.sin_family = AF_INET,
+			.sin_port = 0x3500,
+			.sin_addr.s_addr = 0x7f000001,
+		};
+		print_server((void *)&sa, sizeof(struct sockaddr_in));
+	} else if (argc == 3) {
+		len = res_squery(argv[2], argv[1], 1, 1, answer, sizeof(answer));
+	} else {
+		return -1;
+	}
+
+	struct context ctx = {0};
 	printf("%-10s %s\n", "Name:", argv[1]);
-	if (dns_parse(answer, len, dns_callback, NULL) < 0) {
+
+	if (dns_parse(answer, len, dns_callback, &ctx) < 0) {
 		fprintf(stderr, "parse failure\n");
 		return -1;
 	}
