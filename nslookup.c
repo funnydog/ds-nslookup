@@ -6,24 +6,22 @@
 #include <unistd.h>
 #include <string.h>
 
+static const char *reverse(struct sockaddr *sa, socklen_t len)
+{
+	static char name[256];
+	char serv[16];
+	int rv = getnameinfo(sa, len, name, sizeof(name), serv, sizeof(serv), 0);
+	if (rv < 0)
+		return "";
+
+	return name;
+}
 static void *get_in_addr(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET)
 		return &(((struct sockaddr_in*)sa)->sin_addr);
 
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-static const char *reverse(struct sockaddr *sa, socklen_t len)
-{
-	static char name[256];
-	char serv[16];
-	int rv = getnameinfo(sa, len, name, sizeof(name), serv, sizeof(serv), 0);
-	if (rv < 0) {
-		return "";
-	}
-
-	return name;
 }
 
 static void print_address(struct sockaddr *sa, socklen_t len)
@@ -182,12 +180,14 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 		struct sockaddr_in v4;
 		struct sockaddr_in6 v6;
 	} u = {{0}};
+	socklen_t slen;
 
 	switch (rr) {
 	case 1:			/* A */
 		if (len >= 4) {
 			u.v4.sin_family = AF_INET;
 			u.v4.sin_addr.s_addr = ((bytes[0]*256U + bytes[1])*256U + bytes[2])*256U + bytes[3];
+			slen = sizeof(struct sockaddr_in);
 		}
 		break;
 
@@ -195,7 +195,9 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 		if (len >= 16) {
 			u.v6.sin6_family = AF_INET6;
 			memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
+			slen = sizeof(struct sockaddr_in);
 		}
+		break;
 
 	case 5:			/* CNAME */
 		break;
@@ -204,10 +206,7 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 		return -1;
 	}
 
-	char str[INET6_ADDRSTRLEN];
-	printf("%-10s %s\n", "Address:",
-	       inet_ntop(u.sa.sa_family, get_in_addr(&u.sa), str, sizeof(str)));
-
+	print_address(&u.sa, slen);
 	return 0;
 }
 
