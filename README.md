@@ -21,7 +21,8 @@ Tested under Arch Linux x86_64 and openwrt mips 24k.
 
 ### Package for OpenWRT
 
-To integrate this package in OpenWRT you must make a symlink to packages openwrt subdir and then you can select the package in the Network/Utils Section of menuconfig:
+To integrate this package in OpenWRT you must make a symlink to openwrt/packages.
+Then you can select the package in the Network/Utils Section of menuconfig:
 
 ```
 $ cd ns-lookup
