@@ -192,22 +192,20 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 
 	switch (rr) {
 	case 1:			/* A */
-		if (len >= 4) {
-			u.v4.sin_family = AF_INET;
-			u.v4.sin_addr.s_addr = *(long *)data;
-			slen = sizeof(struct sockaddr_in);
-		}
+		if (len < 4)
+			return 0;
+
+		u.v4.sin_family = AF_INET;
+		u.v4.sin_addr.s_addr = *(long *)data;
+		slen = sizeof(struct sockaddr_in);
 		break;
 
 	case 28:		/* AAAA */
-		if (len >= 16) {
-			u.v6.sin6_family = AF_INET6;
-			memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
-			slen = sizeof(struct sockaddr_in);
-		}
-		break;
-
-	case 5:			/* CNAME */
+		if (len < 16)
+			return 0;
+		u.v6.sin6_family = AF_INET6;
+		memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
+		slen = sizeof(struct sockaddr_in6);
 		break;
 
 	default:
