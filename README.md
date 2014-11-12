@@ -8,6 +8,7 @@ It uses the functions provided by libresolv to send DNS queries to a local or a 
 
 ### Build instructions
 ```
+$ cd ds-nslookup
 $ make
 ```
 
@@ -25,7 +26,7 @@ To integrate this package in OpenWRT you must make a symlink to openwrt/packages
 Then you can select the package in the Network/Utils Section of menuconfig:
 
 ```
-$ cd ns-lookup
+$ cd ds-nslookup
 $ ln -sf openwrt $OPENWRT_PATH/packages/network/utils/ds-nslookup
 $ cd $OPENWRT_PATH
 $ make menuconfig
