@@ -17,7 +17,7 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-static void print_address(int count, struct sockaddr *sa, socklen_t len, const char *name)
+static void print_address(int count, struct sockaddr *sa, const char *name)
 {
 	char str[INET6_ADDRSTRLEN];
 	printf("Address %u: %s %s\n", count,
@@ -52,7 +52,7 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	struct addrinfo *p;
 	int cnt = 0;
 	for (p = res; p != NULL; p = p->ai_next)
-		print_address(++cnt, p->ai_addr, p->ai_addrlen, "");
+		print_address(++cnt, p->ai_addr, "");
 
 	fputc('\n', stdout);
 
@@ -125,11 +125,11 @@ static int dns_parse(const unsigned char *r, int rlen,
 	int len;
 
 	/* return if we didn't even get the header */
-	if (rlen<12)
+	if (rlen < 12)
 		return -1;
 
 	/* return in case of errors */
-	if ((r[3]&15))
+	if ((r[3] & 15))
 		return -1;
 
 	int qdcount = r[4]*256 + r[5];
@@ -181,7 +181,6 @@ static int dns_callback(void *c, int rr, const void *data, int len,
 		struct sockaddr_in v4;
 		struct sockaddr_in6 v6;
 	} u = {{0}};
-	socklen_t slen;
 
 	switch (rr) {
 	case 1:			/* A */
@@ -190,7 +189,6 @@ static int dns_callback(void *c, int rr, const void *data, int len,
 
 		u.v4.sin_family = AF_INET;
 		u.v4.sin_addr.s_addr = *(long *)data;
-		slen = sizeof(struct sockaddr_in);
 		break;
 
 	case 28:		/* AAAA */
@@ -198,7 +196,6 @@ static int dns_callback(void *c, int rr, const void *data, int len,
 			return 0;
 		u.v6.sin6_family = AF_INET6;
 		memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
-		slen = sizeof(struct sockaddr_in6);
 		break;
 
 	default:
@@ -215,7 +212,7 @@ static int dns_callback(void *c, int rr, const void *data, int len,
 		return -1;
 	}
 
-	print_address(++ctx->cnt, &u.sa, slen, name);
+	print_address(++ctx->cnt, &u.sa, name);
 	return 0;
 }
 
