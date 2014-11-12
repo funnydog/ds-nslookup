@@ -22,7 +22,7 @@ Tested under Arch Linux x86_64 and openwrt mips 24k.
 
 ### Package for OpenWRT
 
-To integrate this package in OpenWRT you must make a symlink to openwrt/packages.
+To integrate this package in OpenWRT you should make a symlink to openwrt/packages.
 Then you can select the package in the Network/Utils Section of menuconfig:
 
 ```
