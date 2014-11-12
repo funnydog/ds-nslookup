@@ -9,17 +9,6 @@
 
 static const int POLL_TIMEOUT = 5000;
 
-static const char *reverse(struct sockaddr *sa, socklen_t len)
-{
-	static char name[256];
-	char serv[16];
-	int rv = getnameinfo(sa, len, name, sizeof(name), serv, sizeof(serv), 0);
-	if (rv < 0)
-		return "";
-
-	return name;
-}
-
 static void *get_in_addr(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET)
@@ -28,12 +17,12 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-static void print_address(int count, struct sockaddr *sa, socklen_t len)
+static void print_address(int count, struct sockaddr *sa, socklen_t len, const char *name)
 {
 	char str[INET6_ADDRSTRLEN];
 	printf("Address %u: %s %s\n", count,
 	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)),
-	       reverse(sa, len));
+	       name);
 }
 
 static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *slen)
@@ -57,13 +46,13 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	memmove(sa, res->ai_addr, res->ai_addrlen);
 
 	/* print the server name */
-	printf("%-10s %s\n", "Server:", reverse(sa, *slen));
+	printf("%-10s %s\n", "Server:", server);
 
 	/* walk the address list and print the addresses */
 	struct addrinfo *p;
 	int cnt = 0;
 	for (p = res; p != NULL; p = p->ai_next)
-		print_address(++cnt, p->ai_addr, p->ai_addrlen);
+		print_address(++cnt, p->ai_addr, p->ai_addrlen, "");
 
 	fputc('\n', stdout);
 
@@ -127,28 +116,29 @@ struct context
 	int cnt;
 };
 
-/* copied straight from MUSL libc */
+/* modified from MUSL libc code */
 static int dns_parse(const unsigned char *r, int rlen,
-		int (*callback)(void *, int, const void *, int, const void *),
-		void *ctx)
+		     int (*callback)(void *, int, const void *, int,
+				     const void *, const void *, size_t),
+		     void *ctx)
 {
-	int qdcount, ancount;
-	const unsigned char *p;
 	int len;
 
+	/* return if we didn't even get the header */
 	if (rlen<12)
 		return -1;
 
+	/* return in case of errors */
 	if ((r[3]&15))
-		return 0;
-
-	p = r+12;
-	qdcount = r[4]*256 + r[5];
-	ancount = r[6]*256 + r[7];
-
-	if (qdcount+ancount > 64)
 		return -1;
 
+	int qdcount = r[4]*256 + r[5];
+	int ancount = r[6]*256 + r[7];
+
+	if (qdcount + ancount > 64)
+		return -1;
+
+	const unsigned char *p = r+12;
 	while (qdcount--) {
 		while (p-r < rlen && *p-1U < 127)
 			p++;
@@ -158,10 +148,12 @@ static int dns_parse(const unsigned char *r, int rlen,
 
 		p += 5 + !!*p;
 	}
+
 	while (ancount--) {
 		while (p-r < rlen && *p-1U < 127)
 			p++;
 
+		const void *as = p;
 		if (*p>193 || (*p==193 && p[1]>254) || p>r+rlen-6)
 			return -1;
 
@@ -171,7 +163,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 		if (p+len > r+rlen)
 			return -1;
 
-		if (callback(ctx, p[1], p+10, len, r) < 0)
+		if (callback(ctx, p[1], p+10, len, as, r, rlen) < 0)
 			return -1;
 
 		p += 10 + len;
@@ -179,7 +171,8 @@ static int dns_parse(const unsigned char *r, int rlen,
 	return 0;
 }
 
-static int dns_callback(void *c, int rr, const void *data, int len, const void *packet)
+static int dns_callback(void *c, int rr, const void *data, int len,
+			const void *as, const void *packet, size_t packlen)
 {
 	struct context *ctx = c;
 	const uint8_t *bytes = data;
@@ -212,7 +205,17 @@ static int dns_callback(void *c, int rr, const void *data, int len, const void *
 		return -1;
 	}
 
-	print_address(++ctx->cnt, &u.sa, slen);
+	const uint8_t *label = as;
+	if ((label[0] & 0xC0) == 0xC0)
+		label = packet + label[1] + (label[0] & 0x3F)*256U;
+
+	char name[256];
+	if (dn_expand(packet, packet+packlen, label, name, sizeof(name)) < 0) {
+		fprintf(stderr, "dn_expand() error\n");
+		return -1;
+	}
+
+	print_address(++ctx->cnt, &u.sa, slen, name);
 	return 0;
 }
 
