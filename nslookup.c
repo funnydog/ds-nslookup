@@ -20,7 +20,7 @@ static void *get_in_addr(struct sockaddr *sa)
 static void print_address(int count, struct sockaddr *sa, const char *name)
 {
 	char str[INET6_ADDRSTRLEN];
-	printf("Address %u: %s %s\n", count,
+	printf("Address %d: %s %s\n", count,
 	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)),
 	       name);
 }
@@ -36,7 +36,7 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	struct addrinfo *res;
 
 	int rv = getaddrinfo(server, "53", &hints, &res);
-	if ( rv != 0 || res == NULL) {
+	if (rv != 0 || res == NULL) {
 		fprintf(stderr, "cannot resolve %s:%s\n", server, "53");
 		return -1;
 	}
@@ -203,9 +203,12 @@ static int dns_callback(void *c, int rr, const void *data, int len,
 	}
 
 	const uint8_t *label = as;
+
+	/* find the real position if we have a pointer */
 	if ((label[0] & 0xC0) == 0xC0)
 		label = packet + label[1] + (label[0] & 0x3F)*256U;
 
+	/* expand the name to a FQDN */
 	char name[256];
 	if (dn_expand(packet, packet+packlen, label, name, sizeof(name)) < 0) {
 		fprintf(stderr, "dn_expand() error\n");
