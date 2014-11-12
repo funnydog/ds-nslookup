@@ -23,13 +23,12 @@ Tested under Arch Linux x86_64 and openwrt mips 24k.
 ### Package for OpenWRT
 
 To integrate this package in OpenWRT you should make a symlink to openwrt/packages.
-Then you can select the package in the Network/Utils Section of menuconfig:
+Then you can select the package in the Network Section of menuconfig:
 
 ```
-$ cd ds-nslookup
-$ ln -sf openwrt $OPENWRT_PATH/packages/network/utils/ds-nslookup
+$ ln -sf $NSPATH/openwrt $OPENWRT_PATH/packages/ds-nslookup
 $ cd $OPENWRT_PATH
 $ make menuconfig
 ```
 
-where OPENWRT_PATH is the path to openwrt sources.
+where NSPATH is the path to ds-nslookup and OPENWRT_PATH is the path to openwrt sources.
