@@ -17,12 +17,12 @@ static void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-static void print_address(int count, struct sockaddr *sa, const char *name)
+static void print_address(const char *label, const char *name, struct sockaddr *sa)
 {
 	char str[INET6_ADDRSTRLEN];
-	printf("Address %d: %s %s\n", count,
-	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)),
-	       name);
+	printf("%-10s %s\n", label, name);
+	printf("%-10s %s\n", "Address:",
+	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)));
 }
 
 static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *slen)
@@ -45,15 +45,8 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	*slen = res->ai_addrlen;
 	memmove(sa, res->ai_addr, res->ai_addrlen);
 
-	/* print the server name */
-	printf("%-10s %s\n", "Server:", server);
-
-	/* walk the address list and print the addresses */
-	struct addrinfo *p;
-	int cnt = 0;
-	for (p = res; p != NULL; p = p->ai_next)
-		print_address(++cnt, p->ai_addr, "");
-
+	/* print the address of the server */
+	print_address("Server:", server, res->ai_addr);
 	fputc('\n', stdout);
 
 	/* free the data and exit */
@@ -128,7 +121,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 
 	/* return in case of errors */
 	if ((r[3] & 15))
-		return -1;
+		return 0;
 
 	int qdcount = r[4]*256 + r[5];
 	int ancount = r[6]*256 + r[7];
@@ -171,7 +164,6 @@ static int dns_parse(const unsigned char *r, int rlen,
 static int dns_callback(void *c, int rr, const void *data, size_t len,
 			const void *as, const void *packet, size_t packlen)
 {
-	struct context *ctx = c;
 	const uint8_t *bytes = data;
 	union {
 		struct sockaddr sa;
@@ -179,25 +171,6 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 		struct sockaddr_in6 v6;
 	} u = {{0}};
 
-	switch (rr) {
-	case 1:			/* A */
-		if (len < 4)
-			return 0;
-
-		u.v4.sin_family = AF_INET;
-		u.v4.sin_addr.s_addr = *(long *)data;
-		break;
-
-	case 28:		/* AAAA */
-		if (len < 16)
-			return 0;
-		u.v6.sin6_family = AF_INET6;
-		memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
-		break;
-
-	default:
-		return -1;
-	}
 
 	const uint8_t *label = as;
 
@@ -212,8 +185,34 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 		return -1;
 	}
 
-	print_address(++ctx->cnt, &u.sa, name);
-	return 0;
+	switch (rr) {
+	case 1:			/* A */
+		if (len < 4)
+			return 0;
+
+		u.v4.sin_family = AF_INET;
+		u.v4.sin_addr.s_addr = *(long *)data;
+		print_address("Name:", name, &u.sa);
+		return 0;
+
+	case 28:		/* AAAA */
+		if (len < 16)
+			return 0;
+
+		u.v6.sin6_family = AF_INET6;
+		memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
+		print_address("Name:", name, &u.sa);
+		return 0;
+
+	case 5:			/* CNAME */
+		printf("%s canonical name = ", name);
+		dn_expand(packet, packet+packlen, data, name, sizeof(name));
+		printf("%s\n", name);
+		return 0;
+
+	default:
+		return -1;
+	}
 }
 
 int main(int argc, char *argv[])
@@ -254,9 +253,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* decode the answer */
-	struct context ctx = {0};
-	printf("%-10s %s\n", "Name:", argv[1]);
-	if (dns_parse(answer, len, dns_callback, &ctx) < 0) {
+	if (dns_parse(answer, len, dns_callback, NULL) < 0) {
 		fprintf(stderr, "decode failure\n");
 		return EXIT_FAILURE;
 	}
