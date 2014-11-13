@@ -121,7 +121,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 
 	/* return in case of errors */
 	if ((r[3] & 15))
-		return 0;
+		return -1;
 
 	int qdcount = r[4]*256 + r[5];
 	int ancount = r[6]*256 + r[7];
