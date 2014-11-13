@@ -118,12 +118,10 @@ struct context
 
 /* modified from MUSL libc code */
 static int dns_parse(const unsigned char *r, int rlen,
-		     int (*callback)(void *, int, const void *, int,
+		     int (*callback)(void *, int, const void *, size_t,
 				     const void *, const void *, size_t),
 		     void *ctx)
 {
-	int len;
-
 	/* return if we didn't even get the header */
 	if (rlen < 12)
 		return -1;
@@ -158,8 +156,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 			return -1;
 
 		p += 1 + !!*p;
-		len = p[8]*256 + p[9];
-
+		size_t len = p[8]*256U + p[9];
 		if (p+len > r+rlen)
 			return -1;
 
@@ -171,7 +168,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 	return 0;
 }
 
-static int dns_callback(void *c, int rr, const void *data, int len,
+static int dns_callback(void *c, int rr, const void *data, size_t len,
 			const void *as, const void *packet, size_t packlen)
 {
 	struct context *ctx = c;
