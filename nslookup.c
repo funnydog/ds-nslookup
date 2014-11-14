@@ -214,10 +214,17 @@ static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
 		char *p = buf;
 		for (int i = 0; i < 4; i++) {
 			int l = snprintf(p, len, "%u.", *arr);
+			if (l >= len)
+				return addr;
+
 			arr--;
 			p += l;
 			len -= l;
 		}
+
+		if (len <= 12)
+			return addr;
+
 		strncpy(p, "in-addr.arpa", len);
 		return buf;
 	}
@@ -227,10 +234,17 @@ static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
 		uint8_t *arr = (uint8_t *)dst.v6.s6_addr + 15;
 		for (int i = 0; i < 16; i++) {
 			int l = snprintf(p, len, "%x.%x.", *arr & 15, (*arr >> 4) & 15);
+			if (l >= len)
+				return addr;
+
 			arr--;
 			p += l;
 			len -= l;
 		}
+
+		if (len <= 8)
+			return addr;
+
 		strncpy(p, "ip6.arpa", len);
 		return buf;
 	}
