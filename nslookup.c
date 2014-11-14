@@ -141,10 +141,10 @@ static int dns_parse(const unsigned char *r, int rlen,
 	}
 
 	while (ancount--) {
+		const void *as = p;
 		while (p-r < rlen && *p-1U < 127)
 			p++;
 
-		const void *as = p;
 		if (*p>193 || (*p==193 && p[1]>254) || p>r+rlen-6)
 			return -1;
 
