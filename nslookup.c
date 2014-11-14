@@ -15,7 +15,7 @@ static void print_address(const char *label, const char *name, short family, con
 {
 	char str[INET6_ADDRSTRLEN];
 	printf("%-10s %s\n", label, name);
-	printf("%-10s %s\n", "Address:",
+	printf("%-10s %s\n", "Address 1:",
 	       inet_ntop(family, addr, str, sizeof(str)));
 }
 
