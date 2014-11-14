@@ -9,6 +9,7 @@
 #include <string.h>
 
 static const int POLL_TIMEOUT = 5000;
+static const size_t MAXREVLEN = 73;
 
 static void print_address(const char *label, const char *name, short family, const void *addr)
 {
@@ -18,7 +19,7 @@ static void print_address(const char *label, const char *name, short family, con
 	       inet_ntop(family, addr, str, sizeof(str)));
 }
 
-static int resolve_server(const char *server, const char *port, struct sockaddr *sa, socklen_t *slen)
+static struct addrinfo *resolve_server(const char *server)
 {
 	/* translate the server name to an address */
 	struct addrinfo hints = {
@@ -28,46 +29,40 @@ static int resolve_server(const char *server, const char *port, struct sockaddr 
 	};
 	struct addrinfo *res;
 
-	int rv = getaddrinfo(server, port, &hints, &res);
+	int rv = getaddrinfo(server, "53", &hints, &res);
 	if (rv != 0 || res == NULL) {
-		fprintf(stderr, "cannot resolve %s:%s\n", server, port);
-		return -1;
+		fprintf(stderr, "cannot resolve %s\n", server);
+		return NULL;
 	}
-
-	/* save the values into the structure */
-	*slen = res->ai_addrlen;
-	memmove(sa, res->ai_addr, res->ai_addrlen);
 
 	/* print the address of the server */
 	print_address("Server:", server, res->ai_family,
 		      &((struct sockaddr_in *)res->ai_addr)->sin_addr);
 	fputc('\n', stdout);
 
-	/* free the data and exit */
-	freeaddrinfo(res);
-	return 0;
+	return res;
 }
 
-static int res_ssend(struct sockaddr *sa, socklen_t slen, const unsigned char *msg, int msglen,
+static int res_ssend(struct addrinfo *srv, const unsigned char *msg, int msglen,
 		      unsigned char *answer, int anslen)
 {
 	struct sockaddr_storage src = {
-		.ss_family = sa->sa_family,
+		.ss_family = srv->ai_family,
 	};
 
-	int fd = socket(src.ss_family, SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, 0);
+	int fd = socket(srv->ai_family, SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, 0);
 	if (fd < 0) {
 		fprintf(stderr, "cannot create the socket\n");
 		goto err;
 	}
 
-	if (bind(fd, (void *)&src, slen) < 0) {
+	if (bind(fd, (void *)&src, srv->ai_addrlen) < 0) {
 		fprintf(stderr, "bind failure\n");
 		goto err_close;
 	}
 
 	/* send the query */
-	if (sendto(fd, msg, msglen, MSG_NOSIGNAL, sa, slen) < 0) {
+	if (sendto(fd, msg, msglen, MSG_NOSIGNAL, srv->ai_addr, srv->ai_addrlen) < 0) {
 		fprintf(stderr, "sendto failure\n");
 		goto err_close;
 	}
@@ -83,7 +78,7 @@ static int res_ssend(struct sockaddr *sa, socklen_t slen, const unsigned char *m
 
 	/* receive the data */
 	size_t alen = anslen;
-	ssize_t rlen = recvfrom(fd, answer, alen, 0, (void*)&src, &slen);
+	ssize_t rlen = recvfrom(fd, answer, alen, 0, NULL, NULL);
 	if (rlen < 0) {
 		fprintf(stderr, "recvfrom error\n");
 		goto err_close;
@@ -261,7 +256,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* change the lookup name if we need a PTR */
-	char ptr[73];
+	char ptr[MAXREVLEN];
 	const char *name = check_reverse_lookup(argv[1], ptr, sizeof(ptr));
 
 	/* build the query */
@@ -273,24 +268,27 @@ int main(int argc, char *argv[])
 	}
 
 	/* send the query to the server */
-	struct sockaddr_storage srv;
-	socklen_t srvlen;
+	struct addrinfo *srv;
 	unsigned char answer[1024];
 	int len;
 
 	if (argc == 2) {
-		if (resolve_server("127.0.0.1", "53", (void *)&srv, &srvlen) < 0)
+		srv = resolve_server("127.0.0.1");
+		if (srv == NULL)
 			return EXIT_FAILURE;
 
 		len = res_send(q, ql, answer, sizeof(answer));
 	} else if (argc == 3) {
-		if (resolve_server(argv[2], "53", (void *)&srv, &srvlen) < 0)
+		srv = resolve_server(argv[2]);
+		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		len = res_ssend((void *)&srv, srvlen, q, ql, answer, sizeof(answer));
+		len = res_ssend(srv, q, ql, answer, sizeof(answer));
 	} else {
 		abort();
 	}
+
+	freeaddrinfo(srv);
 
 	if (len < 0) {
 		fprintf(stderr, "cannot send the query\n");
