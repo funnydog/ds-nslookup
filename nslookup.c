@@ -171,16 +171,9 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 		struct sockaddr_in6 v6;
 	} u = {{0}};
 
-
-	const uint8_t *label = as;
-
-	/* find the real position if we have a pointer */
-	if ((label[0] & 0xC0) == 0xC0)
-		label = packet + label[1] + (label[0] & 0x3F)*256U;
-
 	/* expand the name to a FQDN */
 	char name[256];
-	if (dn_expand(packet, packet+packlen, label, name, sizeof(name)) < 0) {
+	if (dn_expand(packet, packet+packlen, as, name, sizeof(name)) < 0) {
 		fprintf(stderr, "dn_expand() error\n");
 		return -1;
 	}
