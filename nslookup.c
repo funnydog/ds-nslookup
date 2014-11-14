@@ -9,20 +9,12 @@
 
 static const int POLL_TIMEOUT = 5000;
 
-static void *get_in_addr(struct sockaddr *sa)
-{
-	if (sa->sa_family == AF_INET)
-		return &(((struct sockaddr_in*)sa)->sin_addr);
-
-	return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-static void print_address(const char *label, const char *name, struct sockaddr *sa)
+static void print_address(const char *label, const char *name, short family, const void *addr)
 {
 	char str[INET6_ADDRSTRLEN];
 	printf("%-10s %s\n", label, name);
 	printf("%-10s %s\n", "Address:",
-	       inet_ntop(sa->sa_family, get_in_addr(sa), str, sizeof(str)));
+	       inet_ntop(family, addr, str, sizeof(str)));
 }
 
 static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *slen)
@@ -46,7 +38,8 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	memmove(sa, res->ai_addr, res->ai_addrlen);
 
 	/* print the address of the server */
-	print_address("Server:", server, res->ai_addr);
+	print_address("Server:", server, res->ai_family,
+		      &((struct sockaddr_in *)res->ai_addr)->sin_addr);
 	fputc('\n', stdout);
 
 	/* free the data and exit */
@@ -164,12 +157,6 @@ static int dns_parse(const unsigned char *r, int rlen,
 static int dns_callback(void *c, int rr, const void *data, size_t len,
 			const void *as, const void *packet, size_t packlen)
 {
-	union {
-		struct sockaddr sa;
-		struct sockaddr_in v4;
-		struct sockaddr_in6 v6;
-	} u = {{0}};
-
 	/* expand the name to a FQDN */
 	char name[256];
 	if (dn_expand(packet, packet+packlen, as, name, sizeof(name)) < 0) {
@@ -182,18 +169,14 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 		if (len < 4)
 			return 0;
 
-		u.v4.sin_family = AF_INET;
-		u.v4.sin_addr.s_addr = *(long *)data;
-		print_address("Name:", name, &u.sa);
+		print_address("Name:", name, AF_INET, data);
 		return 0;
 
 	case 28:		/* AAAA */
 		if (len < 16)
 			return 0;
 
-		u.v6.sin6_family = AF_INET6;
-		memmove(u.v6.sin6_addr.s6_addr, data, 16);
-		print_address("Name:", name, &u.sa);
+		print_address("Name:", name, AF_INET6, data);
 		return 0;
 
 	case 5:			/* CNAME */
