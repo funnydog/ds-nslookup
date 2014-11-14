@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <arpa/inet.h>
 #include <resolv.h>
 #include <netdb.h>
@@ -180,17 +181,61 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 		return 0;
 
 	case 5:			/* CNAME */
-		printf("%s canonical name = ", name);
+	case 12:		/* PTR */
+		if (rr == 5)
+			printf("%s canonical name = ", name);
+
+		if (rr == 12)
+			printf("%s name = ", name);
+
 		if (dn_expand(packet, packet+packlen, data, name, sizeof(name)) < 0) {
 			fprintf(stderr, "dn_expand() error\n");
 			return -1;
 		}
-		printf("%s\n", name);
+		printf("%s.\n", name);
 		return 0;
 
 	default:
 		return -1;
 	}
+}
+
+static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
+{
+	assert(len >= 73);
+
+	union {
+		struct in6_addr v6;
+		struct in_addr v4;
+	} dst;
+
+	if (inet_pton(AF_INET, addr, &dst) > 0) {
+		uint8_t *arr = (uint8_t *)&dst.v4.s_addr + 3;
+		char *p = buf;
+		for (int i = 0; i < 4; i++) {
+			int l = snprintf(p, len, "%u.", *arr);
+			arr--;
+			p += l;
+			len -= l;
+		}
+		strncpy(p, "in-addr.arpa", len);
+		return buf;
+	}
+
+	if (inet_pton(AF_INET6, addr, &dst) > 0) {
+		char *p = buf;
+		uint8_t *arr = (uint8_t *)dst.v6.s6_addr + 15;
+		for (int i = 0; i < 16; i++) {
+			int l = snprintf(p, len, "%x.%x.", *arr & 15, (*arr >> 4) & 15);
+			arr--;
+			p += l;
+			len -= l;
+		}
+		strncpy(p, "ip6.arpa", len);
+		return buf;
+	}
+
+	return addr;
 }
 
 int main(int argc, char *argv[])
@@ -201,9 +246,13 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	/* change the lookup name if we need a PTR */
+	char ptr[73];
+	const char *name = check_reverse_lookup(argv[1], ptr, sizeof(ptr));
+
 	/* build the query */
 	unsigned char q[280];
-	int ql = res_mkquery(0, argv[1], ns_t_a, ns_c_any, 0, 0, 0, q, sizeof(q));
+	int ql = res_mkquery(0, name, ns_t_a, ns_c_any, 0, 0, 0, q, sizeof(q));
 	if (ql < 0) {
 		fprintf(stderr, "cannot build the query\n");
 		return EXIT_FAILURE;
