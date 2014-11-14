@@ -17,7 +17,7 @@ static void print_address(const char *label, const char *name, short family, con
 	       inet_ntop(family, addr, str, sizeof(str)));
 }
 
-static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *slen)
+static int resolve_server(const char *server, const char *port, struct sockaddr *sa, socklen_t *slen)
 {
 	/* translate the server name to an address */
 	struct addrinfo hints = {
@@ -27,9 +27,9 @@ static int resolve_server(const char *server, struct sockaddr *sa, socklen_t *sl
 	};
 	struct addrinfo *res;
 
-	int rv = getaddrinfo(server, "53", &hints, &res);
+	int rv = getaddrinfo(server, port, &hints, &res);
 	if (rv != 0 || res == NULL) {
-		fprintf(stderr, "cannot resolve %s:%s\n", server, "53");
+		fprintf(stderr, "cannot resolve %s:%s\n", server, port);
 		return -1;
 	}
 
@@ -216,10 +216,14 @@ int main(int argc, char *argv[])
 	int len;
 
 	if (argc == 2) {
-		resolve_server("127.0.0.1", (void *)&srv, &srvlen);
+		if (resolve_server("127.0.0.1", "53", (void *)&srv, &srvlen) < 0)
+			return EXIT_FAILURE;
+
 		len = res_send(q, ql, answer, sizeof(answer));
 	} else if (argc == 3) {
-		resolve_server(argv[2], (void *)&srv, &srvlen);
+		if (resolve_server(argv[2], "53", (void *)&srv, &srvlen) < 0)
+			return EXIT_FAILURE;
+
 		len = res_ssend((void *)&srv, srvlen, q, ql, answer, sizeof(answer));
 	} else {
 		abort();
