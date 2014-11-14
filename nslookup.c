@@ -206,7 +206,10 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 
 	case 5:			/* CNAME */
 		printf("%s canonical name = ", name);
-		dn_expand(packet, packet+packlen, data, name, sizeof(name));
+		if (dn_expand(packet, packet+packlen, data, name, sizeof(name)) < 0) {
+			fprintf(stderr, "dn_expand() error\n");
+			return -1;
+		}
 		printf("%s\n", name);
 		return 0;
 
