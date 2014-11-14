@@ -164,7 +164,6 @@ static int dns_parse(const unsigned char *r, int rlen,
 static int dns_callback(void *c, int rr, const void *data, size_t len,
 			const void *as, const void *packet, size_t packlen)
 {
-	const uint8_t *bytes = data;
 	union {
 		struct sockaddr sa;
 		struct sockaddr_in v4;
@@ -193,7 +192,7 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 			return 0;
 
 		u.v6.sin6_family = AF_INET6;
-		memmove(u.v6.sin6_addr.s6_addr, bytes, 16);
+		memmove(u.v6.sin6_addr.s6_addr, data, 16);
 		print_address("Name:", name, &u.sa);
 		return 0;
 
