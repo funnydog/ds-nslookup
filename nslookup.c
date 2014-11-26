@@ -166,18 +166,14 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 
 	switch (rr) {
 	case 1:			/* A */
-		if (len < 4)
-			return 0;
-
-		print_address("Name:", name, AF_INET, data);
-		return 0;
+		if (len >= 4)
+			print_address("Name:", name, AF_INET, data);
+		break;
 
 	case 28:		/* AAAA */
-		if (len < 16)
-			return 0;
-
-		print_address("Name:", name, AF_INET6, data);
-		return 0;
+		if (len >= 16)
+			print_address("Name:", name, AF_INET6, data);
+		break;
 
 	case 5:			/* CNAME */
 	case 12:		/* PTR */
@@ -192,11 +188,13 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 			return -1;
 		}
 		printf("%s.\n", name);
-		return 0;
+		break;
 
 	default:
-		return -1;
+		break;
 	}
+
+	return 0;
 }
 
 static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
