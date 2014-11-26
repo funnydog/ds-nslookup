@@ -99,7 +99,8 @@ struct context
 };
 
 /* modified from MUSL libc code */
-static int dns_parse(const unsigned char *r, int rlen,
+static int dns_parse(const unsigned char *q, int qlen,
+		     const unsigned char *r, int rlen,
 		     int (*callback)(void *, int, const void *, size_t,
 				     const void *, const void *, size_t),
 		     void *ctx)
@@ -128,6 +129,9 @@ static int dns_parse(const unsigned char *r, int rlen,
 
 		p += 5 + !!*p;
 	}
+
+	if (memcmp(q+12, r+12, p-r-12))
+		return -1;
 
 	while (ancount--) {
 		const void *as = p;
@@ -260,43 +264,43 @@ int main(int argc, char *argv[])
 	const char *name = check_reverse_lookup(argv[1], ptr, sizeof(ptr));
 
 	/* build the query */
-	unsigned char q[280];
-	int ql = res_mkquery(0, name, ns_t_a, ns_c_any, 0, 0, 0, q, sizeof(q));
-	if (ql < 0) {
+	unsigned char query[280];
+	int qlen = res_mkquery(0, name, ns_t_a, ns_c_any, 0, 0, 0,
+			       query, sizeof(query));
+	if (qlen < 0) {
 		fprintf(stderr, "cannot build the query\n");
 		return EXIT_FAILURE;
 	}
 
 	/* send the query to the server */
 	struct addrinfo *srv;
-	unsigned char answer[1024];
-	int len;
+	unsigned char reply[1024];
+	int rlen;
 
 	if (argc == 2) {
 		srv = resolve_server("127.0.0.1");
 		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		len = res_send(q, ql, answer, sizeof(answer));
+		rlen = res_send(query, qlen, reply, sizeof(reply));
 	} else if (argc == 3) {
 		srv = resolve_server(argv[2]);
 		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		len = res_ssend(srv, q, ql, answer, sizeof(answer));
+		rlen = res_ssend(srv, query, qlen, reply, sizeof(reply));
 	} else {
 		abort();
 	}
-
 	freeaddrinfo(srv);
 
-	if (len < 0) {
+	if (rlen < 0) {
 		fprintf(stderr, "cannot send the query\n");
 		return EXIT_FAILURE;
 	}
 
 	/* decode the answer */
-	if (dns_parse(answer, len, dns_callback, NULL) < 0) {
+	if (dns_parse(query, qlen, reply, rlen, dns_callback, NULL) < 0) {
 		fprintf(stderr, "decode failure\n");
 		return EXIT_FAILURE;
 	}
