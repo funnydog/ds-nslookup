@@ -284,8 +284,8 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	/* check if query and response qsections match */
-	if (memcmp(query+12, response+12, qlen-12)) {
+	/* check if query and response id match */
+	if (memcmp(query, response, 2)) {
 		fprintf(stderr, "qsections don't match\n");
 		return EXIT_FAILURE;
 	}
