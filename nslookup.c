@@ -93,11 +93,6 @@ err:
 	return -1;
 }
 
-struct context
-{
-	int cnt;
-};
-
 /* modified from MUSL libc code */
 static int dns_parse(const unsigned char *r, int rlen,
 		     int (*callback)(void *, int, const void *, size_t,
