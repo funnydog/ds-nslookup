@@ -99,8 +99,7 @@ struct context
 };
 
 /* modified from MUSL libc code */
-static int dns_parse(const unsigned char *q, int qlen,
-		     const unsigned char *r, int rlen,
+static int dns_parse(const unsigned char *r, int rlen,
 		     int (*callback)(void *, int, const void *, size_t,
 				     const void *, const void *, size_t),
 		     void *ctx)
@@ -129,9 +128,6 @@ static int dns_parse(const unsigned char *q, int qlen,
 
 		p += 5 + !!*p;
 	}
-
-	if (memcmp(q+12, r+12, p-r-12))
-		return -1;
 
 	while (ancount--) {
 		const void *as = p;
@@ -297,8 +293,14 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	/* check if query and reply qsections match */
+	if (memcmp(query+12, reply+12, qlen-12)) {
+		fprintf(stderr, "qsections don't match\n");
+		return EXIT_FAILURE;
+	}
+
 	/* decode the answer */
-	if (dns_parse(query, qlen, reply, rlen, dns_callback, NULL) < 0) {
+	if (dns_parse(reply, rlen, dns_callback, NULL) < 0) {
 		fprintf(stderr, "decode failure\n");
 		return EXIT_FAILURE;
 	}
