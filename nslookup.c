@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
 
 	/* send the query to the server */
 	struct addrinfo *srv;
-	unsigned char reply[1024];
+	unsigned char response[1024];
 	int rlen;
 
 	if (argc == 2) {
@@ -267,13 +267,13 @@ int main(int argc, char *argv[])
 		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		rlen = res_send(query, qlen, reply, sizeof(reply));
+		rlen = res_send(query, qlen, response, sizeof(response));
 	} else if (argc == 3) {
 		srv = resolve_server(argv[2]);
 		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		rlen = res_ssend(srv, query, qlen, reply, sizeof(reply));
+		rlen = res_ssend(srv, query, qlen, response, sizeof(response));
 	} else {
 		abort();
 	}
@@ -284,14 +284,14 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	/* check if query and reply qsections match */
-	if (memcmp(query+12, reply+12, qlen-12)) {
+	/* check if query and response qsections match */
+	if (memcmp(query+12, response+12, qlen-12)) {
 		fprintf(stderr, "qsections don't match\n");
 		return EXIT_FAILURE;
 	}
 
-	/* decode the answer */
-	if (dns_parse(reply, rlen, dns_callback, NULL) < 0) {
+	/* decode the response */
+	if (dns_parse(response, rlen, dns_callback, NULL) < 0) {
 		fprintf(stderr, "decode failure\n");
 		return EXIT_FAILURE;
 	}
