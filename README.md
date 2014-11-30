@@ -14,7 +14,9 @@ $ make
 
 ### Installation
 
-No installation yet.
+```
+$ make install
+```
 
 ### Tests
 
@@ -26,9 +28,10 @@ To integrate this package in OpenWRT you should make a symlink to openwrt/packag
 Then you can select the package in the Network Section of menuconfig:
 
 ```
-$ ln -sf $NSPATH/openwrt $OPENWRT_PATH/packages/ds-nslookup
-$ cd $OPENWRT_PATH
+$ cd $OPENWRT
+$ mkdir package/ds-nslookup
+$ ln -sf $NSPATH/openwrt/Makefile package/ds-nslookup
 $ make menuconfig
 ```
 
-where NSPATH is the path to ds-nslookup and OPENWRT_PATH is the path to openwrt sources.
+where NSPATH is the path to ds-nslookup and OPENWRT is the path to openwrt sources.
