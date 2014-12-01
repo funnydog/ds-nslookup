@@ -11,7 +11,8 @@
 static const int POLL_TIMEOUT = 5000;
 static const size_t MAXREVLEN = 73;
 
-static void print_address(const char *label, const char *name, short family, const void *addr)
+static void print_address(const char *label, const char *name,
+			  short family, const void *addr)
 {
 	char str[INET6_ADDRSTRLEN];
 	printf("%-10s %s\n", label, name);
@@ -43,14 +44,15 @@ static struct addrinfo *resolve_server(const char *server)
 	return res;
 }
 
-static int res_ssend(struct addrinfo *srv, const unsigned char *msg, int msglen,
-		      unsigned char *answer, int anslen)
+static int res_ssend(struct addrinfo *srv, const unsigned char *msg,
+		     int msglen, unsigned char *answer, int anslen)
 {
 	struct sockaddr_storage src = {
 		.ss_family = srv->ai_family,
 	};
 
-	int fd = socket(srv->ai_family, SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, 0);
+	int fd = socket(srv->ai_family,
+			SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, 0);
 	if (fd < 0) {
 		fprintf(stderr, "cannot create the socket\n");
 		goto err;
@@ -62,7 +64,9 @@ static int res_ssend(struct addrinfo *srv, const unsigned char *msg, int msglen,
 	}
 
 	/* send the query */
-	if (sendto(fd, msg, msglen, MSG_NOSIGNAL, srv->ai_addr, srv->ai_addrlen) < 0) {
+	if (sendto(fd, msg, msglen, MSG_NOSIGNAL,
+		   srv->ai_addr, srv->ai_addrlen) < 0)
+	{
 		fprintf(stderr, "sendto failure\n");
 		goto err_close;
 	}
@@ -168,9 +172,11 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 
 	case 5:			/* CNAME */
 	case 12:		/* PTR */
-		printf((rr == 5) ? "%s canonical name = " : "%s name", name);
+		printf((rr == 5)?"%s canonical name = " : "%s name", name);
 
-		if (dn_expand(packet, packet+packlen, data, name, sizeof(name)) < 0) {
+		if (dn_expand(packet, packet+packlen, data,
+			      name, sizeof(name)) < 0)
+		{
 			fprintf(stderr, "dn_expand() error\n");
 			return -1;
 		}
@@ -184,7 +190,7 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 	return 0;
 }
 
-static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
+static const char *reverse_lookup(const char *addr, char *buf, size_t len)
 {
 	assert(len >= 73);
 
@@ -217,7 +223,8 @@ static const char *check_reverse_lookup(const char *addr, char *buf, size_t len)
 		char *p = buf;
 		uint8_t *arr = (uint8_t *)dst.v6.s6_addr + 15;
 		for (int i = 0; i < 16; i++) {
-			int l = snprintf(p, len, "%x.%x.", *arr & 15, (*arr >> 4) & 15);
+			int l = snprintf(p, len, "%x.%x.",
+					 *arr & 15, (*arr >> 4) & 15);
 			if (l >= len)
 				return addr;
 
@@ -246,7 +253,7 @@ int main(int argc, char *argv[])
 
 	/* change the lookup name if we need a PTR */
 	char ptr[MAXREVLEN];
-	const char *name = check_reverse_lookup(argv[1], ptr, sizeof(ptr));
+	const char *name = reverse_lookup(argv[1], ptr, sizeof(ptr));
 
 	/* build the query */
 	unsigned char query[280];
@@ -273,7 +280,8 @@ int main(int argc, char *argv[])
 		if (srv == NULL)
 			return EXIT_FAILURE;
 
-		rlen = res_ssend(srv, query, qlen, response, sizeof(response));
+		rlen = res_ssend(srv, query, qlen,
+				 response, sizeof(response));
 	} else {
 		abort();
 	}
