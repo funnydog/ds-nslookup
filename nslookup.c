@@ -172,7 +172,7 @@ static int dns_callback(void *c, int rr, const void *data, size_t len,
 
 	case 5:			/* CNAME */
 	case 12:		/* PTR */
-		printf((rr == 5)?"%s canonical name = " : "%s name", name);
+		printf((rr == 5)?"%s\tcanonical name = " : "%s\tname = ", name);
 
 		if (dn_expand(packet, packet+packlen, data,
 			      name, sizeof(name)) < 0)
