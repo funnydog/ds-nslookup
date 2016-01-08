@@ -8,8 +8,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const int POLL_TIMEOUT = 5000;
-static const size_t MAXREVLEN = 73;
+enum {
+	RR_TYPE_A     = 1,
+	RR_TYPE_CNAME = 5,
+	RR_TYPE_PTR   = 12,
+	RR_TYPE_AAAA  = 28,
+	POLL_TIMEOUT  = 5000,
+	MAXREVLEN     = 73,
+};
 
 static void print_address(const char *label, const char *name,
 			  short family, const void *addr)
@@ -26,7 +32,7 @@ static struct addrinfo *resolve_server(const char *server)
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_DGRAM,
-		.ai_flags = AI_PASSIVE|AI_CANONNAME,
+		.ai_flags = AI_PASSIVE|AI_CANONNAME|AI_NUMERICSERV,
 	};
 	struct addrinfo *res;
 
@@ -97,11 +103,42 @@ err:
 	return -1;
 }
 
+static int dns_print(void *ctx, int rr, const uint8_t *data, size_t len,
+		     const uint8_t *as, const uint8_t *p, size_t plen)
+{
+	/* expand the name to a FQDN */
+	char name[256];
+	if (dn_expand(p, p+plen, as, name, sizeof(name)) < 0) {
+		fprintf(stderr, "dn_expand() error\n");
+		return -1;
+	}
+
+	switch (rr) {
+	case RR_TYPE_A:
+	case RR_TYPE_AAAA:
+		print_address("Name:", name, rr == RR_TYPE_A ? AF_INET : AF_INET6, data);
+		break;
+
+	case RR_TYPE_CNAME:
+	case RR_TYPE_PTR:
+		printf(rr == RR_TYPE_CNAME ? "%s\tcanonical name = " : "%s\tname = ", name);
+
+		if (dn_expand(p, p+plen, data, name, sizeof(name)) < 0) {
+			fprintf(stderr, "dn_expand() error\n");
+			return -1;
+		}
+		printf("%s.\n", name);
+		break;
+
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 /* modified from MUSL libc code */
-static int dns_parse(const unsigned char *r, int rlen,
-		     int (*callback)(void *, int, const void *, size_t,
-				     const void *, const void *, size_t),
-		     void *ctx)
+static int dns_parse(const unsigned char *r, int rlen, void *ctx)
 {
 	/* return if we didn't even get the header */
 	if (rlen < 12)
@@ -141,7 +178,7 @@ static int dns_parse(const unsigned char *r, int rlen,
 		if (p+len > r+rlen)
 			return -1;
 
-		if (callback(ctx, p[1], p+10, len, as, r, rlen) < 0)
+		if (dns_print(ctx, p[1], p+10, len, as, r, rlen) < 0)
 			return -1;
 
 		p += 10 + len;
@@ -149,62 +186,17 @@ static int dns_parse(const unsigned char *r, int rlen,
 	return 0;
 }
 
-static int dns_callback(void *c, int rr, const void *data, size_t len,
-			const void *as, const void *packet, size_t packlen)
-{
-	/* expand the name to a FQDN */
-	char name[256];
-	if (dn_expand(packet, packet+packlen, as, name, sizeof(name)) < 0) {
-		fprintf(stderr, "dn_expand() error\n");
-		return -1;
-	}
-
-	switch (rr) {
-	case 1:			/* A */
-		if (len >= 4)
-			print_address("Name:", name, AF_INET, data);
-		break;
-
-	case 28:		/* AAAA */
-		if (len >= 16)
-			print_address("Name:", name, AF_INET6, data);
-		break;
-
-	case 5:			/* CNAME */
-	case 12:		/* PTR */
-		printf((rr == 5)?"%s\tcanonical name = " : "%s\tname = ", name);
-
-		if (dn_expand(packet, packet+packlen, data,
-			      name, sizeof(name)) < 0)
-		{
-			fprintf(stderr, "dn_expand() error\n");
-			return -1;
-		}
-		printf("%s.\n", name);
-		break;
-
-	default:
-		break;
-	}
-
-	return 0;
-}
-
 static const char *reverse_lookup(const char *addr, char *buf, size_t len)
 {
-	assert(len >= 73);
+	assert(len >= MAXREVLEN);
 
-	union {
-		struct in6_addr v6;
-		struct in_addr v4;
-	} dst;
-
-	if (inet_pton(AF_INET, addr, &dst) > 0) {
-		uint8_t *arr = (uint8_t *)&dst.v4.s_addr + 3;
+	struct in_addr v4;
+	if (inet_pton(AF_INET, addr, &v4) > 0) {
+		uint8_t *arr = (uint8_t *)&v4.s_addr + 3;
 		char *p = buf;
 		for (int i = 0; i < 4; i++) {
 			int l = snprintf(p, len, "%u.", *arr);
-			if (l >= len)
+			if (l < 0 || l >= len)
 				return addr;
 
 			arr--;
@@ -219,13 +211,14 @@ static const char *reverse_lookup(const char *addr, char *buf, size_t len)
 		return buf;
 	}
 
-	if (inet_pton(AF_INET6, addr, &dst) > 0) {
+	struct in6_addr v6;
+	if (inet_pton(AF_INET6, addr, &v6) > 0) {
 		char *p = buf;
-		uint8_t *arr = (uint8_t *)dst.v6.s6_addr + 15;
+		uint8_t *arr = (uint8_t *)v6.s6_addr + 15;
 		for (int i = 0; i < 16; i++) {
 			int l = snprintf(p, len, "%x.%x.",
 					 *arr & 15, (*arr >> 4) & 15);
-			if (l >= len)
+			if (l < 0 || l >= len)
 				return addr;
 
 			arr--;
@@ -299,7 +292,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* decode the response */
-	if (dns_parse(response, rlen, dns_callback, NULL) < 0) {
+	if (dns_parse(response, rlen, NULL) < 0) {
 		fprintf(stderr, "decode failure\n");
 		return EXIT_FAILURE;
 	}
