@@ -248,54 +248,65 @@ int main(int argc, char *argv[])
 	char ptr[MAXREVLEN];
 	const char *name = reverse_lookup(argv[1], ptr, sizeof(ptr));
 
-	/* build the query */
-	unsigned char query[280];
-	int qlen = res_mkquery(0, name, ns_c_in, ns_t_any, 0, 0, 0,
-			       query, sizeof(query));
-	if (qlen < 0) {
-		fprintf(stderr, "cannot build the query\n");
+	/* query types */
+	ns_type queries[2], *qend = queries;
+	if (name == argv[1])
+	{
+		*qend++ = ns_t_a;
+		*qend++ = ns_t_aaaa;
+	}
+	else
+	{
+		*qend++ = ns_t_ptr;
+	}
+
+	struct addrinfo *srv = (argc < 3)
+		? resolve_server("127.0.0.1")
+		: resolve_server(argv[2]);
+	if (srv == NULL)
+	{
+		fprintf(stderr, "cannot resolve the nameserver\n");
 		return EXIT_FAILURE;
 	}
 
-	/* send the query to the server */
-	struct addrinfo *srv;
-	unsigned char response[1024];
-	int rlen;
-
-	if (argc == 2) {
-		srv = resolve_server("127.0.0.1");
-		if (srv == NULL)
+	for (ns_type *qtype = queries; qtype != qend; qtype++)
+	{
+		/* build the query */
+		unsigned char query[280];
+		int qlen = res_mkquery(0, name, ns_c_in, *qtype, 0, 0, 0,
+				       query, sizeof(query));
+		if (qlen < 0)
+		{
+			fprintf(stderr, "cannot build the query\n");
 			return EXIT_FAILURE;
+		}
 
-		rlen = res_send(query, qlen, response, sizeof(response));
-	} else if (argc == 3) {
-		srv = resolve_server(argv[2]);
-		if (srv == NULL)
+		/* send the query to the server */
+		unsigned char response[1024];
+		int rlen = (argc < 3)
+			? res_send(query, qlen, response, sizeof(response))
+			: res_ssend(srv, query, qlen, response, sizeof(response));
+		if (rlen < 0)
+		{
+			fprintf(stderr, "cannot send the query\n");
 			return EXIT_FAILURE;
+		}
 
-		rlen = res_ssend(srv, query, qlen,
-				 response, sizeof(response));
-	} else {
-		abort();
+		/* check if query and response id match */
+		if (memcmp(query, response, 2))
+		{
+			fprintf(stderr, "qsections don't match\n");
+			return EXIT_FAILURE;
+		}
+
+		/* decode the response */
+		if (dns_parse(response, rlen, NULL) < 0)
+		{
+			fprintf(stderr, "decode failure\n");
+			return EXIT_FAILURE;
+		}
 	}
 	freeaddrinfo(srv);
-
-	if (rlen < 0) {
-		fprintf(stderr, "cannot send the query\n");
-		return EXIT_FAILURE;
-	}
-
-	/* check if query and response id match */
-	if (memcmp(query, response, 2)) {
-		fprintf(stderr, "qsections don't match\n");
-		return EXIT_FAILURE;
-	}
-
-	/* decode the response */
-	if (dns_parse(response, rlen, NULL) < 0) {
-		fprintf(stderr, "decode failure\n");
-		return EXIT_FAILURE;
-	}
 
 	return EXIT_SUCCESS;
 }
