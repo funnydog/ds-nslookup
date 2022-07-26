@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	int rv = EXIT_SUCCESS;
+	int found = 0;
 	for (ns_type *qtype = queries; qtype != qend; qtype++)
 	{
 		/* build the query */
@@ -288,8 +288,7 @@ int main(int argc, char *argv[])
 		if (qlen < 0)
 		{
 			fprintf(stderr, "cannot build the query\n");
-			rv = EXIT_FAILURE;
-			break;
+			continue;
 		}
 
 		/* send the query to the server */
@@ -300,16 +299,14 @@ int main(int argc, char *argv[])
 		if (rlen < 0)
 		{
 			fprintf(stderr, "cannot send the query\n");
-			rv = EXIT_FAILURE;
-			break;
+			continue;
 		}
 
 		/* check if query and response id match */
 		if (memcmp(query, response, 2))
 		{
 			fprintf(stderr, "qsections don't match\n");
-			rv = EXIT_FAILURE;
-			break;
+			continue;
 		}
 
 		/* decode the response */
@@ -317,10 +314,18 @@ int main(int argc, char *argv[])
 		    && dns_error(response, rlen))
 		{
 			fprintf(stderr, "decode failure\n");
-			rv = EXIT_FAILURE;
-			break;
+			continue;
 		}
+
+		found = 1;
 	}
 	freeaddrinfo(srv);
-	return rv;
+
+	if (!found)
+	{
+		fprintf(stderr, "** server can't find %s\n", argv[1]);
+		return EXIT_FAILURE;
+	}
+
+	return EXIT_SUCCESS;
 }
