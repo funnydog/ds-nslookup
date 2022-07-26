@@ -269,6 +269,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+	int rv = EXIT_SUCCESS;
 	for (ns_type *qtype = queries; qtype != qend; qtype++)
 	{
 		/* build the query */
@@ -278,7 +279,8 @@ int main(int argc, char *argv[])
 		if (qlen < 0)
 		{
 			fprintf(stderr, "cannot build the query\n");
-			return EXIT_FAILURE;
+			rv = EXIT_FAILURE;
+			break;
 		}
 
 		/* send the query to the server */
@@ -289,24 +291,26 @@ int main(int argc, char *argv[])
 		if (rlen < 0)
 		{
 			fprintf(stderr, "cannot send the query\n");
-			return EXIT_FAILURE;
+			rv = EXIT_FAILURE;
+			break;
 		}
 
 		/* check if query and response id match */
 		if (memcmp(query, response, 2))
 		{
 			fprintf(stderr, "qsections don't match\n");
-			return EXIT_FAILURE;
+			rv = EXIT_FAILURE;
+			break;
 		}
 
 		/* decode the response */
 		if (dns_parse(response, rlen, NULL) < 0)
 		{
 			fprintf(stderr, "decode failure\n");
-			return EXIT_FAILURE;
+			rv = EXIT_FAILURE;
+			break;
 		}
 	}
 	freeaddrinfo(srv);
-
-	return EXIT_SUCCESS;
+	return rv;
 }
