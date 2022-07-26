@@ -250,7 +250,7 @@ int main(int argc, char *argv[])
 
 	/* build the query */
 	unsigned char query[280];
-	int qlen = res_mkquery(0, name, ns_t_a, ns_c_any, 0, 0, 0,
+	int qlen = res_mkquery(0, name, ns_c_in, ns_t_any, 0, 0, 0,
 			       query, sizeof(query));
 	if (qlen < 0) {
 		fprintf(stderr, "cannot build the query\n");
