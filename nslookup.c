@@ -310,10 +310,12 @@ int main(int argc, char *argv[])
 		}
 
 		/* decode the response */
-		if (dns_parse(response, rlen, NULL) < 0
-		    && dns_error(response, rlen))
+		if (dns_parse(response, rlen, NULL) < 0)
 		{
-			fprintf(stderr, "decode failure\n");
+			if (dns_error(response, rlen))
+			{
+				fprintf(stderr, "decode failure\n");
+			}
 			continue;
 		}
 
