@@ -186,6 +186,15 @@ static int dns_parse(const unsigned char *r, int rlen, void *ctx)
 	return 0;
 }
 
+static int dns_error(const unsigned char *r, int rlen)
+{
+	if (rlen > 3)
+	{
+		return r[3] & 15;
+	}
+	return -1;
+}
+
 static const char *reverse_lookup(const char *addr, char *buf, size_t len)
 {
 	assert(len >= MAXREVLEN);
@@ -304,7 +313,8 @@ int main(int argc, char *argv[])
 		}
 
 		/* decode the response */
-		if (dns_parse(response, rlen, NULL) < 0)
+		if (dns_parse(response, rlen, NULL) < 0
+		    && dns_error(response, rlen))
 		{
 			fprintf(stderr, "decode failure\n");
 			rv = EXIT_FAILURE;
