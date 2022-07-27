@@ -186,13 +186,24 @@ static int dns_parse(const unsigned char *r, int rlen, void *ctx)
 	return 0;
 }
 
-static int dns_error(const unsigned char *r, int rlen)
+static const char *dns_strerror(const unsigned char *r, int rlen)
 {
-	if (rlen > 3)
+	switch (rlen > 3 ? (r[3] & 15) : 0)
 	{
-		return r[3] & 15;
+	case 0: return "NoAnswer";
+	case 1: return "FormErr";
+	case 2: return "SerFail";
+	case 3: return "NXDomain";
+	case 4: return "NotImp";
+	case 5: return "Refused";
+	case 6: return "YXDomain";
+	case 7: return "YXRRSet";
+	case 8: return "NXRRSet";
+	case 9:
+	case 10: return "NotAuth";
+	case 11: return "NotZone";
+	default: return "Unassigned";
 	}
-	return -1;
 }
 
 static const char *reverse_lookup(const char *addr, char *buf, size_t len)
@@ -279,6 +290,7 @@ int main(int argc, char *argv[])
 	}
 
 	int found = 0;
+	const char *lasterr;
 	for (ns_type *qtype = queries; qtype != qend; qtype++)
 	{
 		/* build the query */
@@ -287,7 +299,7 @@ int main(int argc, char *argv[])
 				       query, sizeof(query));
 		if (qlen < 0)
 		{
-			fprintf(stderr, "cannot build the query\n");
+			lasterr = "cannot build the query";
 			continue;
 		}
 
@@ -298,24 +310,21 @@ int main(int argc, char *argv[])
 			: res_ssend(srv, query, qlen, response, sizeof(response));
 		if (rlen < 0)
 		{
-			fprintf(stderr, "cannot send the query\n");
+			lasterr = "cannot send the query";
 			continue;
 		}
 
 		/* check if query and response id match */
 		if (memcmp(query, response, 2))
 		{
-			fprintf(stderr, "qsections don't match\n");
+			lasterr = "qsections don't match";
 			continue;
 		}
 
 		/* decode the response */
 		if (dns_parse(response, rlen, NULL) < 0)
 		{
-			if (dns_error(response, rlen))
-			{
-				fprintf(stderr, "decode failure\n");
-			}
+			lasterr = dns_strerror(response, rlen);
 			continue;
 		}
 
@@ -325,7 +334,7 @@ int main(int argc, char *argv[])
 
 	if (!found)
 	{
-		fprintf(stderr, "** server can't find %s\n", argv[1]);
+		fprintf(stderr, "** server can't find %s: %s\n", argv[1], lasterr);
 		return EXIT_FAILURE;
 	}
 
