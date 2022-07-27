@@ -8,11 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum {
-	RR_TYPE_A     = 1,
-	RR_TYPE_CNAME = 5,
-	RR_TYPE_PTR   = 12,
-	RR_TYPE_AAAA  = 28,
+enum
+{
 	POLL_TIMEOUT  = 5000,
 	MAXREVLEN     = 73,
 };
@@ -114,14 +111,14 @@ static int dns_print(void *ctx, int rr, const uint8_t *data, size_t len,
 	}
 
 	switch (rr) {
-	case RR_TYPE_A:
-	case RR_TYPE_AAAA:
-		print_address("Name:", name, rr == RR_TYPE_A ? AF_INET : AF_INET6, data);
+	case ns_t_a:
+	case ns_t_aaaa:
+		print_address("Name:", name, rr == ns_t_a ? AF_INET : AF_INET6, data);
 		break;
 
-	case RR_TYPE_CNAME:
-	case RR_TYPE_PTR:
-		printf(rr == RR_TYPE_CNAME ? "%s\tcanonical name = " : "%s\tname = ", name);
+	case ns_t_cname:
+	case ns_t_ptr:
+		printf(rr == ns_t_cname ? "%s\tcanonical name = " : "%s\tname = ", name);
 
 		if (dn_expand(p, p+plen, data, name, sizeof(name)) < 0) {
 			fprintf(stderr, "dn_expand() error\n");
